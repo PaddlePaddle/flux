@@ -23,7 +23,8 @@ endfunction()
 
 # create an object library for each op subfolder
 function(flux_add_op_cu_obj_lib TARGET FILES)
-  add_library(${TARGET} OBJECT ${FILES})
+  # add_library(${TARGET} OBJECT ${FILES})
+  add_library(${TARGET} STATIC ${FILES})
   set_target_properties(${TARGET} PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
   target_link_libraries(${TARGET} PUBLIC CUDA::cudart ${CMAKE_THREAD_LIBS_INIT} )
   set_property(TARGET ${TARGET} PROPERTY POSITION_INDEPENDENT_CODE ON)

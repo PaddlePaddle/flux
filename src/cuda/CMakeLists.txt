@@ -22,7 +22,9 @@ set(LIB_FILES
 
 set(_VER_FILE ${CMAKE_CURRENT_SOURCE_DIR}/version.ld)
 
-add_library(flux_cuda SHARED ${LIB_FILES})
+# add_library(flux_cuda SHARED ${LIB_FILES})
+add_library(flux_cuda STATIC ${LIB_FILES})
+# add_library(flux_cuda OBJECT ${LIB_FILES})
 set_target_properties(flux_cuda PROPERTIES
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
   LINK_DEPENDS ${_VER_FILE}

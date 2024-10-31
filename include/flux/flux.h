@@ -888,6 +888,10 @@ to_make_expr(cute::tuple<Ts...> const &tup) {
 ///////////////////////////////////////////////////////////////
 // General comparator
 ///////////////////////////////////////////////////////////////
+template <class... Ts>
+constexpr bool
+operator<(cute::tuple<Ts...> const &lhs, cute::tuple<Ts...> const &rhs);
+
 namespace detail {
 template <class Tp, class Up, std::size_t I, std::size_t Size>
 struct TupleCompare {
