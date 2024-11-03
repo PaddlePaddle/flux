@@ -217,8 +217,6 @@ class OpRegistry {
     // Fallback to the first registered hparams if not dispatcher registered
     auto visit_iter = gemm_hparams_.find(unified_meta);
 
-    printf("\ngemm_hparams_.size(): %d\n", gemm_hparams_.size());
-
     FLUX_CHECK(visit_iter != gemm_hparams_.end())
         << "No registered hparams found for meta:" << unified_meta;
     const std::set<std::pair<int, UnifiedGemmHParams>> &registered_hparams = visit_iter->second;

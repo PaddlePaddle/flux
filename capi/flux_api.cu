@@ -313,7 +313,6 @@ extern "C" {
 
 void ensure_nvml_init_capi() {
   ensure_nvml_init();
-  printf("\n>>>>>>>>>>>>>>>>>>>>>>>>arrvie at init\n");
 }
 
 const char * get_gpu_device_name_capi(int devid) {
