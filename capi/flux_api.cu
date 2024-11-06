@@ -2,10 +2,12 @@
 #include "flux/gemm_meta.h"
 #include "flux/runtime_config.h"
 #include "flux/cuda/cuda_common.h"
+#include "flux/cuda/cuda_stub.h"
 #include "flux/cuda/helper_kernels.h"
 #include "flux/flux.h"
 #include "flux/op_registry.h"
 #include "flux/args/reduce_scatter.h"
+#include "flux/args/all_gather.h"
 #include "flux/utils.h"
 #include "reduce_scatter/reduce_scatter_barrier_struct.hpp"
 #ifdef FLUX_REDUCE_SCATTERT_WITH_NCCL
@@ -17,6 +19,7 @@
 #endif
 
 #include <cuda_runtime_api.h>
+#include <cuda.h>
 
 using namespace bytedance::flux;
 
@@ -30,6 +33,9 @@ using bytedance::flux::_RCR;
 using bytedance::flux::_Void
 using bytedance::flux::_Sm90;
 #endif
+
+#define CUStreamWriteValue(...) cuda_stub().cuStreamWriteValue32_v2(__VA_ARGS__)
+#define SPLIT 1
 
 typedef struct {
     const void * input;
@@ -307,9 +313,190 @@ size_t gemm_rs_internal(const void * const input,
 #endif
     return 0;
 }
+
+typedef struct {
+  void * input;
+  void * input_buffer;
+  void * weight;
+  void * bias;
+  void * output_buffer;
+  void * barrier_buffer;
+  void * gemm_buffer;
+  cudaStream_t current_stream;
+  cudaEvent_t ready_event;
+  int32_t n;
+  int32_t k;
+  int32_t n_dim;
+  int32_t k_dim;
+  int32_t input_size_0;
+  int32_t rank;
+  int32_t world_size;
+  int32_t nnodes;
+  int32_t ring_mode;
+  bool is_bf16;
+  bool kDebugRunGemm;
+  bool transpose_weight;
+  bool fast_accum;
+  bool has_bias() const {return bias != nullptr;}
+  DataTypeEnum input_dtype() const {
+    if (is_bf16) return _BF16{};
+    else return  _FP16{};
+  }
+  DataTypeEnum output_dtype() const {return input_dtype();}
+} AGGemmParams;
+
+auto
+get_gemm_meta(AGGemmParams params) {
+  ArchEnum arch = get_arch();
+  auto input_dtype = params.input_dtype();
+  auto output_dtype = params.output_dtype();
+  auto dtype_config = make_gemm_dtype_config(
+      input_dtype, input_dtype, params.has_bias() ? output_dtype : _Void{}(), output_dtype);
+
+  auto gemm_layout = params.transpose_weight ? _RRR{}() : _RCR{}();
+  UnifiedImplMeta impl_spec = None{};
+
+  bool use_fast_accum = params.fast_accum and dtype_config.is_input_fp8();
+  auto impl = ((int)arch < (int)_Sm90{}()) ? _GemmV2{}() : _GemmV3{}();
+  if (impl == _GemmV2{}) {
+    impl_spec = make_gemm_v2_meta(use_fast_accum);
+  } else if (impl == _GemmV3{}) {
+    impl_spec = make_gemm_v3_meta(use_fast_accum);
+  }
+
+  auto meta = make_gemm_meta(dtype_config, arch, _AGKernel{}, gemm_layout, impl, impl_spec);
+  return meta;
+}
+
+RuntimeConfig
+get_rt_config(AGGemmParams params) {
+#if 0
+  // TODO(umiswing): add check in phi
+  CHECK_INPUT(input, this->input_dtype);
+  CHECK_INPUT(weight, this->input_dtype);
+
+  FLUX_CHECK_EQ(input.dim(), 2);
+  FLUX_CHECK_EQ(weight.dim(), 2);
+
+  if (bias.has_value()) {
+    CHECK_INPUT(bias.value(), this->output_dtype);
+    FLUX_CHECK_EQ(bias->dim(), 2);
+    if (this->is_fp8_gemm) {
+      FLUX_CHECK_EQ(1, bias->size(0));
+    } else {
+      FLUX_CHECK_EQ(input.size(0) * this->world_size, bias->size(0));
+    }
+    FLUX_CHECK_EQ(n_dim, bias->size(1));
+  }
+#endif
+
+#if 0
+  int n = this->transpose_weight ? weight.size(1) : weight.size(0);
+  int k = this->transpose_weight ? weight.size(0) : weight.size(1);
+#endif
+
+  FLUX_CHECK(params.n == params.n_dim) << "n-dim != expected n_dim: " << params.n << " vs " << params.n_dim;
+  FLUX_CHECK(params.k == params.k_dim) << "weight k-dim mismatch: " << params.k << " != " << params.k_dim;
+
+  return make_runtime_config(
+      params.input_size_0 * params.world_size,
+      params.n_dim,
+      params.k_dim,
+      make_all_gather_runtime_config(params.world_size, params.nnodes, (int)(params.ring_mode)));
+}
+
+size_t ag_gemm_internal(
+    void * input,
+    void * input_buffer,
+    void * weight,
+    void * bias,
+    void * output_buffer,
+    void * barrier_buffer,
+    void * gemm_buffer,
+    cudaStream_t current_stream,
+    cudaEvent_t ready_event,
+    int32_t n,
+    int32_t k,
+    int32_t n_dim,
+    int32_t k_dim,
+    int32_t input_size_0,
+    int32_t rank,
+    int32_t world_size,
+    int32_t nnodes,
+    int32_t ring_mode,
+    bool is_bf16,
+    bool kDebugRunGemm,
+    bool transpose_weight,
+    bool fast_accum,
+    bool return_workspace_size) {
+  AGGemmParams params;
+
+  params.input = input;
+  params.input_buffer = input_buffer;
+  params.weight = weight;
+  params.bias = bias;
+  params.output_buffer = output_buffer;
+  params.barrier_buffer = barrier_buffer;
+  params.gemm_buffer = gemm_buffer;
+  params.current_stream = current_stream;
+  params.ready_event = ready_event;
+  params.n = n;
+  params.k = k;
+  params.n_dim = n_dim;
+  params.k_dim = k_dim;
+  params.input_size_0 = input_size_0;
+  params.rank = rank;
+  params.world_size = world_size;
+  params.nnodes = nnodes;
+  params.ring_mode = ring_mode;
+  params.is_bf16 = is_bf16;
+  params.kDebugRunGemm = kDebugRunGemm;
+  params.transpose_weight = transpose_weight;
+  params.fast_accum = fast_accum;
+
+  auto meta = get_gemm_meta(params);
+  auto rt_config = get_rt_config(params);
+  auto hparams = OpRegistry::instance().get_hparams(meta, rt_config);
+  auto cutlass_op = OpRegistry::instance().get_op(meta, hparams);
+  auto gemm_args = AGKernelArguments{
+        .m = rt_config.m(),
+        .n = rt_config.n(),
+        .k = rt_config.k(),
+        .rank = static_cast<int>(params.rank),
+        .world_size = static_cast<int>(params.world_size),
+        .nnodes = static_cast<int>(params.nnodes),
+        .alpha = 1.0f,
+        .beta = params.has_bias() ? 1.0f : 0.0f,
+        .input = params.input,
+        .input_buffer = params.input_buffer,
+        .weight = params.weight,
+        .bias = params.bias,
+        .output = params.output_buffer,
+        .barrier_buffer = params.barrier_buffer};
+  // AG Gemm Workspace
+  int64_t workspace_size = cutlass_op->get_workspace_size(gemm_args);
+  if (return_workspace_size) return workspace_size;
+
+  /// GEMM
+  if (params.kDebugRunGemm) {
+    cutlass_op->run(gemm_args, params.gemm_buffer, params.current_stream);
+  } else {
+    CUDA_CHECK(cudaStreamWaitEvent(params.current_stream, params.ready_event));
+  }
+  return 0;
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+void set_ready(int32_t* barrier_ptr, int segment, int split_index, cudaStream_t stream) {
+    CU_CHECK(CUStreamWriteValue(
+        stream,
+        (CUdeviceptr)(barrier_ptr + (segment * SPLIT + split_index)),
+        1,
+        CU_STREAM_WRITE_VALUE_DEFAULT));
+}
 
 void ensure_nvml_init_capi() {
   ensure_nvml_init();
@@ -412,6 +599,56 @@ size_t gemm_rs(const void * const input,
              stream,
              rs_stream,
              event);
+}
+
+size_t ag_gemm(
+    void * input,
+    void * input_buffer,
+    void * weight,
+    void * bias,
+    void * output_buffer,
+    void * barrier_buffer,
+    void * gemm_buffer,
+    cudaStream_t current_stream,
+    cudaEvent_t ready_event,
+    int32_t n,
+    int32_t k,
+    int32_t n_dim,
+    int32_t k_dim,
+    int32_t input_size_0,
+    int32_t rank,
+    int32_t world_size,
+    int32_t nnodes,
+    int32_t ring_mode,
+    bool is_bf16,
+    bool kDebugRunGemm,
+    bool transpose_weight,
+    bool fast_accum,
+    bool return_workspace_size) {
+  return ag_gemm_internal(
+      input,
+      input_buffer,
+      weight,
+      bias,
+      output_buffer,
+      barrier_buffer,
+      gemm_buffer,
+      current_stream,
+      ready_event,
+      n,
+      k,
+      n_dim,
+      k_dim,
+      input_size_0,
+      rank,
+      world_size,
+      nnodes,
+      ring_mode,
+      is_bf16,
+      kDebugRunGemm,
+      transpose_weight,
+      fast_accum,
+      return_workspace_size);
 }
 #ifdef __cplusplus
 }

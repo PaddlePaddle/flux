@@ -52,11 +52,38 @@ size_t gemm_rs(const void * const input,
                cudaStream_t rs_stream,
                cudaEvent_t event);
 
+size_t ag_gemm(
+    void * input,
+    void * input_buffer,
+    void * weight,
+    void * bias,
+    void * output_buffer,
+    void * barrier_buffer,
+    void * gemm_buffer,
+    cudaStream_t current_stream,
+    cudaEvent_t ready_event,
+    int32_t n,
+    int32_t k,
+    int32_t n_dim,
+    int32_t k_dim,
+    int32_t input_size_0,
+    int32_t rank,
+    int32_t world_size,
+    int32_t nnodes,
+    int32_t ring_mode,
+    bool is_bf16,
+    bool kDebugRunGemm,
+    bool transpose_weight,
+    bool fast_accum,
+    bool return_workspace_size);
+
 void ensure_nvml_init_capi();
 
 const char * get_gpu_device_name_capi(int devid);
 
 void cudaipc_barrier_all_on_stream_impl_capi(cudaStream_t stream, int32_t **sync_buffer_ptr, int rank, int world_size);
+
+void set_ready(int32_t* barrier_ptr, int segment, int split_index, cudaStream_t stream);
 #ifdef __cplusplus
 }
 #endif

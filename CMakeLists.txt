@@ -132,4 +132,4 @@ INSTALL(FILES capi/flux_api.h DESTINATION "include" RENAME flux_api.h)
 
 # add_dependencies(flux flux_cuda_reduce_scatter flux_cuda)
 
-target_link_libraries(flux PUBLIC flux_cuda_all_gather -Wl,--whole-archive flux_cuda_reduce_scatter -Wl,--no-whole-archive -Wl,--whole-archive flux_cuda -Wl,--no-whole-archive)
+target_link_libraries(flux PUBLIC -Wl,--whole-archive flux_cuda_all_gather -Wl,--no-whole-archive -Wl,--whole-archive flux_cuda_reduce_scatter -Wl,--no-whole-archive -Wl,--whole-archive flux_cuda -Wl,--no-whole-archive)
