@@ -180,7 +180,8 @@ struct Sm90ReduceScatterDma {
           int64_t(tile_N), Int<1>{}, tile_M * N, int64_t(tile_M * tile_N), get<2>(params.stride));
     } else {
       params.dReduce = args.stride;
-      params.sReduce = make_shape(M_reduce, N, L);
+      // params.sReduce = make_shape(M_reduce, N, L);
+      params.sReduce = make_shape(M, N, L);
     }
 
     params.local_reduce_buffer = static_cast<Element *>(args.local_reduce_buffer);
@@ -328,9 +329,12 @@ struct Sm90ReduceScatterDma {
     int m_reduce_in_output =
         m + (params_ptr->local_rank - local_dst_rank) * params_ptr->tile_m_perrank;
     // the actual m coord in reduce_buffer
+    int m_reduce = m;
+#if 0
     int m_reduce =
         (m % params_ptr->tile_m_perrank) +
         params_ptr->tile_m_perrank * (dst_node_idx * params_ptr->nnodes + params_ptr->node_idx);
+#endif
 
     /////////////////// Reduce Tensors ////////////////////
     auto get_mReduce = [&]() {
@@ -348,11 +352,31 @@ struct Sm90ReduceScatterDma {
       }
     };
 
-    auto mReduce = get_mReduce();  // (M_reduce,N,L)
+    auto mReduce = get_mReduce();  // (M,N,L)
     Tensor gReduce = local_tile(
         mReduce, take<0, 2>(TileShape{}), make_coord(m_reduce, n, l));  // (TILE_M,TILE_N)
     Tensor gReduce_epi =
         flat_divide(gReduce, EpilogueTile{});  // (EPI_TILE_M,EPI_TILE_N,EPI_M,EPI_N)
+
+#if 0
+    int print_thread_idx = threadIdx.x + blockDim.x*threadIdx.y + blockDim.x*blockDim.y*threadIdx.z;
+    int block_idx = blockIdx.x + gridDim.x*blockIdx.y + gridDim.x*gridDim.y*blockIdx.z;
+    if(block_idx==0 && print_thread_idx==96) {
+      printf("\nmReduce\n");
+      print(mReduce);
+      printf("\nTileShape{}\n");
+      print(TileShape{});
+      printf("\nmake_coord(m_reduce, n, l)\n");
+      print(make_coord(m_reduce, n, l));
+      printf("\ngReduce\n");
+      print(gReduce);
+      printf("\nEpilogueTile{}\n");
+      print(EpilogueTile{});
+      printf("\ngReduce_epi\n");
+      print(gReduce_epi);
+      printf("\n\n\n\n\n\n\n");
+    }
+#endif
 
     Tensor sReduce_epi =
         make_tensor(make_smem_ptr(smem_tensor), SmemLayout{});  // (EPI_TILE_M,EPI_TILE_N,PIPE)
@@ -383,12 +407,14 @@ struct Sm90ReduceScatterDma {
     int *lock_ptr = params_ptr->local_barrier_ptr[params_ptr->local_rank];
     int flag_idx = reduce_tile_idx * 2 + 1;
 
-    bool is_local_tile_reduce = local_dst_rank == params_ptr->local_rank;
+    // bool is_local_tile_reduce = local_dst_rank == params_ptr->local_rank;
 
+#if 0
     if (not is_local_tile_reduce) {
       // if this tile is fetched from other rank, wait for the local rank to reduce first
       Barrier::wait_lt(lock_ptr, thread_idx, flag_idx, 1);
     }
+#endif
 
     CUTLASS_PRAGMA_UNROLL
     for (int epi_n = 0; epi_n < size<3>(gReduce_epi); ++epi_n) {
@@ -408,6 +434,8 @@ struct Sm90ReduceScatterDma {
             // fetch from local_src_rank
             copy(tiled_copy, tsReduce_epi(_, copy_m, copy_n), trReduce);
             // write to reduce_buffer
+            copy(tiled_copy, trReduce, tgReduce_epi(_, copy_m, copy_n));
+#if 0
             if (is_local_tile_reduce) {
               copy(tiled_copy, trReduce, tgReduce_epi(_, copy_m, copy_n));
             } else {
@@ -417,6 +445,7 @@ struct Sm90ReduceScatterDma {
                   (void *)tgReduce_epi(_, copy_m, copy_n).data(),
                   true);
             }
+#endif
           }
         }
 
