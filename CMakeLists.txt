@@ -116,9 +116,6 @@ link_directories(
 
 add_subdirectory(src)
 
-# add_library(flux SHARED $<TARGET_OBJECTS:flux_cuda_reduce_scatter> $<TARGET_OBJECTS:flux_cuda> flux_api.cu)
-# flux_cuda_all_gather
-# add_library(flux SHARED $<TARGET_OBJECTS:flux_cuda_all_gather> $<TARGET_OBJECTS:flux_cuda_reduce_scatter> $<TARGET_OBJECTS:flux_cuda> capi/flux_api.cu)
 add_library(flux SHARED capi/flux_api.cu)
 
 target_include_directories(flux PRIVATE
@@ -129,7 +126,5 @@ INSTALL(TARGETS flux
     LIBRARY DESTINATION "lib")
 
 INSTALL(FILES capi/flux_api.h DESTINATION "include" RENAME flux_api.h)
-
-# add_dependencies(flux flux_cuda_reduce_scatter flux_cuda)
 
 target_link_libraries(flux PUBLIC -Wl,--whole-archive flux_cuda_all_gather -Wl,--no-whole-archive -Wl,--whole-archive flux_cuda_reduce_scatter -Wl,--no-whole-archive -Wl,--whole-archive flux_cuda -Wl,--no-whole-archive)
