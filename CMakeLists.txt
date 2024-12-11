@@ -17,6 +17,8 @@ message("NVShmem Support: ${ENABLE_NVSHMEM}")
 # find cuda
 find_package(CUDAToolkit REQUIRED)
 
+string(REPLACE " " ";" CUDAARCHS "${FLUX_CUDAARCHS}")
+
 message(STATUS "CUDAToolkit_VERSION: ${CUDAToolkit_VERSION}")
 if(CUDAToolkit_VERSION VERSION_LESS "11.0")
   message(FATAL_ERROR "requires cuda to be >= 11.0")
