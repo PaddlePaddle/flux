@@ -1,3 +1,17 @@
+// Copyright (c) 2024 PaddlePaddle Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 
 #include <cuda.h>
@@ -52,30 +66,29 @@ size_t gemm_rs(const void * const input,
                cudaStream_t rs_stream,
                cudaEvent_t event);
 
-size_t ag_gemm(
-    void * input,
-    void * input_buffer,
-    void * weight,
-    void * bias,
-    void * output_buffer,
-    void * barrier_buffer,
-    void * gemm_buffer,
-    cudaStream_t current_stream,
-    cudaEvent_t ready_event,
-    int32_t n,
-    int32_t k,
-    int32_t n_dim,
-    int32_t k_dim,
-    int32_t input_size_0,
-    int32_t rank,
-    int32_t world_size,
-    int32_t nnodes,
-    int32_t ring_mode,
-    bool is_bf16,
-    bool kDebugRunGemm,
-    bool transpose_weight,
-    bool fast_accum,
-    bool return_workspace_size);
+size_t ag_gemm(void * input,
+               void * input_buffer,
+               void * weight,
+               void * bias,
+               void * output_buffer,
+               void * barrier_buffer,
+               void * gemm_buffer,
+               cudaStream_t current_stream,
+               cudaEvent_t ready_event,
+               int32_t n,
+               int32_t k,
+               int32_t n_dim,
+               int32_t k_dim,
+               int32_t input_size_0,
+               int32_t rank,
+               int32_t world_size,
+               int32_t nnodes,
+               int32_t ring_mode,
+               bool is_bf16,
+               bool kDebugRunGemm,
+               bool transpose_weight,
+               bool fast_accum,
+               bool return_workspace_size);
 
 void ensure_nvml_init_capi();
 
