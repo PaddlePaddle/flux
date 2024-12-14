@@ -75,6 +75,19 @@ struct GemmOperatorBaseDefaultImplMixin : public GemmOperatorBase {
     CUTLASS_CHECK(gemm_op.run(cu_stream));
   }
 
+  bool
+  can_implement(std::any const &args) override {
+    void *args_workspace = nullptr;
+
+    using Gemm = decltype(derived()->gemm_device());
+    using GemmArguments = typename Gemm::Arguments;
+    GemmArguments const &gemm_args =
+        static_cast<DerivedImpl *>(this)->to_gemm_args(args, args_workspace);
+    // CUTLASS_TRACE_HOST(" active blocks: " << Gemm::maximum_active_blocks());
+    cutlass::Status status = Gemm::can_implement(gemm_args);
+    return status == cutlass::Status::kSuccess;
+  }
+
   std::size_t
   get_workspace_size(std::any const &args) const override {
     std::size_t workspace_size = 0;

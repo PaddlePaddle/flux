@@ -264,6 +264,7 @@ size_t gemm_rs(const void * const input,
                const bool no_nvlink,
                const bool get_workspace_size_flag,
                const bool get_barrier_workspace_size,
+               const bool check_can_implement,
                cudaStream_t stream,
                cudaStream_t rs_stream,
                cudaEvent_t event) {
@@ -355,6 +356,11 @@ size_t gemm_rs(const void * const input,
       .reduce_scatter_args = reduce_scatter_args
   };
 
+  if(check_can_implement) {
+    if(cutlass_op->can_implement(args)) return 1;
+    else return 0;
+  }
+
   // initialize workspace
   int64_t workspace_size = cutlass_op->get_workspace_size(args);
   if (get_workspace_size_flag)
@@ -382,20 +388,21 @@ size_t ag_gemm(void * input,
                void * gemm_buffer,
                cudaStream_t current_stream,
                cudaEvent_t ready_event,
-               int32_t n,
-               int32_t k,
-               int32_t n_dim,
-               int32_t k_dim,
-               int32_t input_size_0,
-               int32_t rank,
-               int32_t world_size,
-               int32_t nnodes,
-               int32_t ring_mode,
-               bool is_bf16,
-               bool kDebugRunGemm,
-               bool transpose_weight,
-               bool fast_accum,
-               bool return_workspace_size) {
+               const int32_t n,
+               const int32_t k,
+               const int32_t n_dim,
+               const int32_t k_dim,
+               const int32_t input_size_0,
+               const int32_t rank,
+               const int32_t world_size,
+               const int32_t nnodes,
+               const int32_t ring_mode,
+               const bool is_bf16,
+               const bool kDebugRunGemm,
+               const bool transpose_weight,
+               const bool fast_accum,
+               const bool return_workspace_size,
+               const bool check_can_implement) {
   AGGemmParams params;
 
   params.input = input;
@@ -440,6 +447,11 @@ size_t ag_gemm(void * input,
         .bias = params.bias,
         .output = params.output_buffer,
         .barrier_buffer = params.barrier_buffer};
+
+  if(check_can_implement) {
+    if(cutlass_op->can_implement(gemm_args)) return 1;
+    else return 0;
+  }
   // AG Gemm Workspace
   int64_t workspace_size = cutlass_op->get_workspace_size(gemm_args);
   if (return_workspace_size) return workspace_size;
