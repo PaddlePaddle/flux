@@ -87,6 +87,7 @@ struct GemmOperatorBase {
 
   virtual ~GemmOperatorBase() = default;
   virtual void run(std::any const &args, void *workspace = nullptr, void *stream = nullptr) = 0;
+  virtual bool can_implement(std::any const &args) = 0;
 
   // for device allocation required by Gemm::Arguments
   virtual size_t

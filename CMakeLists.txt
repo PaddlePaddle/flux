@@ -17,6 +17,8 @@ message("NVShmem Support: ${ENABLE_NVSHMEM}")
 # find cuda
 find_package(CUDAToolkit REQUIRED)
 
+string(REPLACE " " ";" CUDAARCHS "${FLUX_CUDAARCHS}")
+
 message(STATUS "CUDAToolkit_VERSION: ${CUDAToolkit_VERSION}")
 if(CUDAToolkit_VERSION VERSION_LESS "11.0")
   message(FATAL_ERROR "requires cuda to be >= 11.0")
@@ -72,64 +74,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-if(BUILD_THS)
-  message("Build THS on")
-  find_package(Python 3 REQUIRED)
-  find_program(PYTHON_EXECUTABLE NAMES python3 python)
-
-  set(TORCH_CUDA_ARCH_LIST)
-  foreach(ARCH ${CMAKE_CUDA_ARCHITECTURES})
-    if(ARCH STREQUAL "80")
-	    list(APPEND TORCH_CUDA_ARCH_LIST "8.0")
-    elseif(ARCH STREQUAL "89")
-      list(APPEND TORCH_CUDA_ARCH_LIST "8.9")
-    elseif(ARCH STREQUAL "90")
-      list(APPEND TORCH_CUDA_ARCH_LIST "9.0")
-    else()
-      message(WARNING "Unsupported CUDA arch [${ARCH}] for TORCH_CUDA_ARCH")
-    endif()
-  endforeach()
-
-  execute_process(COMMAND ${PYTHON_EXECUTABLE} "-c" "from __future__ import print_function; import os; import torch;
-print(os.path.dirname(torch.__file__),end='');"
-                  RESULT_VARIABLE _PYTHON_SUCCESS
-                  OUTPUT_VARIABLE TORCH_DIR)
-  if (NOT _PYTHON_SUCCESS MATCHES 0)
-      message("PY:${PYTHONPATH}")
-      message(FATAL_ERROR "Torch config Error.")
-  endif()
-  list(APPEND CMAKE_PREFIX_PATH ${TORCH_DIR})
-  find_package(Torch REQUIRED)
-  find_library(TORCH_PYTHON_LIBRARY torch_python PATH "${TORCH_DIR}/lib")
-
-  execute_process(COMMAND ${PYTHON_EXECUTABLE} "-c" "from __future__ import print_function; from distutils import sysconfig;
-print(sysconfig.get_python_inc());
-print(sysconfig.get_config_var('EXT_SUFFIX'));"
-                  RESULT_VARIABLE _PYTHON_SUCCESS
-                  OUTPUT_VARIABLE _PYTHON_VALUES)
-  if (NOT _PYTHON_SUCCESS MATCHES 0)
-      message("PY:${PYTHON_EXECUTABLE}")
-      message(FATAL_ERROR "Python config Error.")
-  endif()
-  string(REGEX REPLACE ";" "\\\\;" _PYTHON_VALUES ${_PYTHON_VALUES})
-  string(REGEX REPLACE "\n" ";" _PYTHON_VALUES ${_PYTHON_VALUES})
-  list(GET _PYTHON_VALUES 0 PY_INCLUDE_DIR)
-  list(GET _PYTHON_VALUES 1 PY_SUFFIX)
-  list(APPEND COMMON_HEADER_DIRS ${PY_INCLUDE_DIR})
-
-  execute_process(COMMAND ${PYTHON_EXECUTABLE} "-c"
-                  "from torch.utils import cpp_extension; import re; import torch;                                    \
-                   version = tuple(int(i) for i in re.match('(\\d+)\\.(\\d+)\\.(\\d+)', torch.__version__).groups()); \
-                   args = ([],True,False,False) if version >= (1, 8, 0) else ([],True,False);                         \
-                   print(' '.join(cpp_extension._prepare_ldflags(*args)),end='');"
-                  RESULT_VARIABLE _PYTHON_SUCCESS
-                  OUTPUT_VARIABLE TORCH_LINK)
-  message("-- TORCH_LINK ${TORCH_LINK}")
-  if (NOT _PYTHON_SUCCESS MATCHES 0)
-      message(FATAL_ERROR "PyTorch link config Error.")
-  endif()
-endif()
-
 # force use sm90a for cutlass
 string(REGEX REPLACE "sm_90" "sm_90a" CMAKE_CUDA_FLAGS ${CMAKE_CUDA_FLAGS})
 string(REGEX REPLACE "compute_90" "compute_90a" CMAKE_CUDA_FLAGS ${CMAKE_CUDA_FLAGS})
@@ -173,3 +117,16 @@ link_directories(
 )
 
 add_subdirectory(src)
+
+add_library(flux SHARED capi/flux_api.cu)
+
+target_include_directories(flux PRIVATE
+    src
+    include)
+
+INSTALL(TARGETS flux
+    LIBRARY DESTINATION "lib")
+
+INSTALL(FILES capi/flux_api.h DESTINATION "include" RENAME flux_api.h)
+
+target_link_libraries(flux PUBLIC -Wl,--whole-archive flux_cuda_all_gather -Wl,--no-whole-archive -Wl,--whole-archive flux_cuda_reduce_scatter -Wl,--no-whole-archive -Wl,--whole-archive flux_cuda -Wl,--no-whole-archive)
