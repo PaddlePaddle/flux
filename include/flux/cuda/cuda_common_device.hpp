@@ -20,6 +20,7 @@
 #include "cute/util/debug.hpp"
 #include "cute/util/print.hpp"
 #include <cstring>
+#include <cuda/atomic>
 #include <cuda/std/atomic>
 #include <cuda/std/chrono>
 
